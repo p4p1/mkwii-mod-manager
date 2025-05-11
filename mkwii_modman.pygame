@@ -1,0 +1,223 @@
+#!/usr/bin/env python
+
+import sys, os, io
+import shutil, time, threading
+import pygame
+import zipfile
+import requests
+from config import *
+from filepicker import *
+
+CONFIG_FILE_PATH = "./config.json"
+ZIP_FOLDER       = "/tmp/update/"
+WINDOW_SURFACE   = pygame.HWSURFACE|pygame.DOUBLEBUF
+
+class RetroRewind():
+    def __init__(self, config):
+        self.api_endpoint = "http://update.zplwii.xyz:8000/RetroRewind"
+        self.latest = self.getLatestInfo()
+        self.current_version = self.getCurrentVerison()
+        self.cfg = config
+        print(f"Latest Version: {self.latest['version']}")
+        print(f"Update URL: {self.latest['url']}")
+        print(f"Current Version: {self.current_version}")
+
+    def update_config(self, config):
+        self.cfg = config
+
+    def exists(self):
+        return os.path.exists(self.cfg["dolphin_path"] + "/RetroRewind6/")
+
+    def getLatestInfo(self):
+        try:
+            req = requests.get(self.api_endpoint + "/RetroRewindVersion.txt")
+            return { 'version': req.text.split('\n')[-1].split(' ')[0], 'url': req.text.split('\n')[-1].split(' ')[1] }
+        except:
+            return None
+
+    def getCurrentVerison(self):
+        try:
+            with open(self.cfg['dolphin_path'] + '/RetroRewind6/version.txt', 'r') as fp:
+                return fp.read()
+        except:
+            return None
+
+    def needUpdate(self):
+        if self.latest == None or self.current_version == None:
+            return False
+        if self.latest['version'] != self.current_version:
+            return True
+        else:
+            return False
+
+    def install(self):
+        print("installing")
+        URL = self.api_endpoint + "/zip/RetroRewind.zip"
+        extract_to = ZIP_FOLDER
+        print("downloading")
+        res = requests.get(URL)
+
+        res.raise_for_status()
+        print("downloaded")
+        with zipfile.ZipFile(io.BytesIO(res.content)) as zip_fp:
+            os.makedirs(extract_to, exist_ok=True)
+            zip_fp.extractall(extract_to)
+        print(f"zip extracted at {extract_to}")
+        print(f"moving all to {self.cfg['dolphin_path']}")
+        if os.path.exists(self.cfg['dolphin_path'] + "/RetroRewind6/"):
+            shutil.rmtree(self.cfg['dolphin_path'] + "/RetroRewind6/")
+        shutil.move(extract_to + "/RetroRewind6/", self.cfg['dolphin_path'] + "/RetroRewind6/")
+        if os.path.exists(self.cfg['dolphin_path'] + "/riivolution/RetroRewind6.xml"):
+            os.remove(self.cfg['dolphin_path'] + "/riivolution/RetroRewind6.xml")
+        os.makedirs(self.cfg['dolphin_path'] + "/riivolution/", exist_ok=True)
+        shutil.move(extract_to + "/riivolution/RetroRewind6.xml", self.cfg['dolphin_path'] + "/riivolution/RetroRewind6.xml")
+
+    def update(self):
+        extract_to=ZIP_FOLDER
+
+        if not os.path.exists(self.cfg['dolphin_path'] + "/RetroRewind6/"):
+            return False
+        if self.latest == None or self.current_version == None:
+            return False
+        URL = self.latest['url']
+        res = requests.get(URL)
+        res.raise_for_status()
+        with zipfile.ZipFile(io.BytesIO(res.content)) as zip_fp:
+            os.makedirs(extract_to, exist_ok=True)
+            zip_fp.extractall(extract_to)
+        for item in os.listdir(extract_to):
+            src_path = os.path.join(extract_to, item)
+            dst_path = os.path.join(DOLPHIN_ROOT, item)
+
+            # If target exists, remove it first
+            if os.path.exists(dst_path):
+                if os.path.isdir(dst_path):
+                    shutil.rmtree(dst_path)
+                else:
+                    os.remove(dst_path)
+            print(src_path)
+            print(dst_path)
+            shutil.move(src_path, dst_path)
+        # Move the item
+
+        with open(self.cfg['dolphin_path'] + '/RetroRewind6/version.txt', 'w') as fp:
+            return fp.write(self.latest['version'])
+
+def pressButton(cfg, rr):
+    cfg['loading'] = True
+    if cfg['menu_select'] == 1:
+        if rr.needUpdate():
+            cfg['action_thread'] = threading.Thread(target=rr.update)
+        else:
+            cfg['action_thread'] = threading.Thread(target=rr.install)
+        cfg['action_thread'].start()
+    elif cfg['menu_select'] == 0:
+        cfg['loading'] = True
+    else:
+        cfg['loading'] = False
+
+def eventHandler(joystick, cfg, rr):
+    for event in pygame.event.get():
+        if event.type == pygame.QUIT:
+            pygame.quit()
+            sys.exit(0)
+    if cfg['loading'] == True:
+        return
+    # Controller input
+    hat = joystick.get_hat(0)
+    if hat[1] == 1:  # Up
+        if cfg['menu_select'] > 0:
+            cfg['menu_select'] -= 1
+    elif hat[1] == -1:  # Down
+        if cfg['menu_select'] < 1:
+            cfg['menu_select'] += 1
+    pygame.event.pump()
+    if joystick.get_button(7) and joystick.get_button(6):
+        # press start and select to quit
+        os.system(f"rm -rf {ZIP_FOLDER}")
+        pygame.quit()
+        sys.exit()
+    elif joystick.get_button(0):  # A
+        print("press A")
+        pressButton(cfg, rr)
+    #time.sleep(0.5)
+
+def draw(screen, infoObject, rr, cfg):
+    fontTitle = pygame.font.SysFont(None, 48)
+    fontText = pygame.font.SysFont(None, 38)
+    background = pygame.image.load("resources/Untitled.png")
+    if not hasattr(draw, "dottimer"):
+        draw.dottimer = 0  # Static-like: initialized once
+    if not hasattr(draw, "numdots"):
+        draw.numdots = 0  # Static-like: initialized once
+
+    screen.fill((255, 255, 255))
+    screen.blit(background, (0, 0))
+    title = fontTitle.render("Mario Kart Wii Mods Updater", True, (0, 0, 0))
+    screen.blit(title, (infoObject.current_w//2 - title.get_width()//2, 100))
+    text = fontTitle.render("Dolphin path:", True, (0, 0, 0))
+    screen.blit(text, (100, 300))
+    if cfg['menu_select'] == 0:
+        text = fontTitle.render(">", True, (0, 0, 0))
+        screen.blit(text, (100, 350))
+    text = fontText.render(cfg['dolphin_path'] + " - Select to change", True, (0, 0, 0))
+    screen.blit(text, (150, 350))
+    text = fontTitle.render("Retro Rewind", True, (0, 0, 0))
+    screen.blit(text, (100, 400))
+    if cfg['menu_select'] == 1:
+        text = fontTitle.render(">", True, (0, 0, 0))
+        screen.blit(text, (100, 450))
+    if rr.exists():
+        if rr.needUpdate():
+            text = fontText.render("Update Installation", True, (0, 0, 0))
+        else:
+            text = fontText.render("Retro Rewind is up to date! - Select to delete and re-install", True, (0, 0, 0))
+    else:
+        text = fontText.render("Install RetroRewind", True, (0, 0, 0))
+    screen.blit(text, (150, 450))
+    if cfg['loading'] == True:
+        current_time = pygame.time.get_ticks()
+        if current_time - draw.dottimer > 500:
+            draw.numdots = (draw.numdots + 1) % 4  # cycle through 0 to 3
+            draw.dottimer = current_time
+        loading_text = '.' * draw.numdots
+        text_surface = fontText.render(loading_text, True, (0, 0, 255))
+        text_rect = text_surface.get_rect(center=(200, 100))
+        screen.blit(text_surface, text_rect)
+
+def main():
+    infoObject = pygame.display.Info()
+    screen = pygame.display.set_mode((infoObject.current_w, infoObject.current_h), WINDOW_SURFACE)
+    clock = pygame.time.Clock()
+    pygame.display.set_caption("ModManager")
+    pygame.joystick.init()
+    config = load_config(CONFIG_FILE_PATH)
+    rr_handler = RetroRewind(config)
+
+    if pygame.joystick.get_count() < 1:
+        print("No controller connected.")
+        pygame.quit()
+        sys.exit()
+    joystick = pygame.joystick.Joystick(0)
+    fp = FilePicker(screen,joystick)
+    while True:
+        eventHandler(joystick, config, rr_handler)
+        draw(screen, infoObject, rr_handler, config)
+        if config['loading'] == True and config['menu_select'] == 0:
+            fp.draw()
+            text = fp.event()
+            if len(text) > 0:
+                config['loading'] = False
+                print(text)
+                config['dolphin_path'] = text
+                save_config(CONFIG_FILE_PATH, config)
+        pygame.display.flip()
+        if config['loading'] == True and config['menu_select'] == 1 and not config['action_thread'].is_alive():
+            config['loading'] = False
+            config['action_thread'] = None
+        clock.tick(30)
+
+
+if __name__ == "__main__":
+    pygame.init()
+    main()
