@@ -146,10 +146,14 @@ def draw(screen, infoObject, rr, cfg):
     fontTitle = pygame.font.SysFont(None, 48)
     fontText = pygame.font.SysFont(None, 38)
     background = pygame.image.load("resources/Untitled.png")
-    if not hasattr(draw, "dottimer"):
-        draw.dottimer = 0  # Static-like: initialized once
-    if not hasattr(draw, "numdots"):
-        draw.numdots = 0  # Static-like: initialized once
+    if not hasattr(draw, "frameindex"):
+        draw.frameindex= 0  # Static-like: initialized once
+    if not hasattr(draw, "frames"):
+        draw.frames = []
+        for filename in sorted(os.listdir("./resources/loading_bar/")):
+            if filename.endswith(".png"):
+                frame = pygame.image.load(os.path.join("./resources/loading_bar/", filename)).convert_alpha()
+                draw.frames.append(frame)
 
     screen.fill((255, 255, 255))
     screen.blit(background, (0, 0))
@@ -176,14 +180,32 @@ def draw(screen, infoObject, rr, cfg):
         text = fontText.render("Install RetroRewind", True, (0, 0, 0))
     screen.blit(text, (150, 450))
     if cfg['loading'] == True:
+        screen.blit(draw.frames[draw.frameindex], ((infoObject.current_w / 2) - (draw.frames[draw.frameindex].get_width() / 2), infoObject.current_h - draw.frames[draw.frameindex].get_height()))
+        draw.frameindex = (draw.frameindex + 1) % len(draw.frames)
+
+def loadingScreen(screen, infoObject):
+    frame_folder = "./resources/loading_screen/"
+    frames = []
+    for filename in sorted(os.listdir(frame_folder)):
+        if filename.endswith(".png"):
+            frame = pygame.image.load(os.path.join(frame_folder, filename)).convert_alpha()
+            frames.append(frame)
+    loading = True
+    clock = pygame.time.Clock()
+    frame_index = 0
+    frame_rate = 60  # frames per second
+    start_time = pygame.time.get_ticks()  # Time in milliseconds
+
+    while loading:
+        screen.fill((0, 0, 0))
+        screen.blit(frames[frame_index], ((infoObject.current_w / 2) - (frames[frame_index].get_width() / 2), (infoObject.current_h / 2) - (frames[frame_index].get_height() / 2)))
+        pygame.display.flip()
+        frame_index = (frame_index + 1) % len(frames)
+        clock.tick(frame_rate)
         current_time = pygame.time.get_ticks()
-        if current_time - draw.dottimer > 500:
-            draw.numdots = (draw.numdots + 1) % 4  # cycle through 0 to 3
-            draw.dottimer = current_time
-        loading_text = '.' * draw.numdots
-        text_surface = fontText.render(loading_text, True, (0, 0, 255))
-        text_rect = text_surface.get_rect(center=(200, 100))
-        screen.blit(text_surface, text_rect)
+        elapsed_time = (current_time - start_time) / 1000  # Convert to seconds
+        if elapsed_time >= 4:
+            loading= False  # Exit after 2 seconds
 
 def main():
     infoObject = pygame.display.Info()
@@ -200,6 +222,7 @@ def main():
         sys.exit()
     joystick = pygame.joystick.Joystick(0)
     fp = FilePicker(screen,joystick)
+    loadingScreen(screen, infoObject)
     while True:
         eventHandler(joystick, config, rr_handler)
         draw(screen, infoObject, rr_handler, config)

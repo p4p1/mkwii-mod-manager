@@ -10,7 +10,7 @@ import pygame
 
 ITEM_HEIGHT = 40
 VISIBLE_ITEMS = 15
-WHITE = (255, 255, 255)
+WHITE = (200, 200, 200)
 BLACK = (0, 0, 0)
 HIGHLIGHT = (100, 100, 255)
 
