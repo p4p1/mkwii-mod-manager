@@ -8,18 +8,24 @@
 import os, shutil, io
 import zipfile, requests
 
+ZIP_FOLDER       = "/tmp/update/"
+
 class RetroRewind():
     def __init__(self, config):
+        self.cfg = config
         self.api_endpoint = "http://update.zplwii.xyz:8000/RetroRewind"
         self.latest = self.getLatestInfo()
         self.current_version = self.getCurrentVerison()
-        self.cfg = config
         print(f"Latest Version: {self.latest['version']}")
         print(f"Update URL: {self.latest['url']}")
         print(f"Current Version: {self.current_version}")
 
     def update_config(self, config):
         self.cfg = config
+
+    def update_version(self):
+        self.latest = self.getLatestInfo()
+        self.current_version = self.getCurrentVerison()
 
     def exists(self):
         return os.path.exists(self.cfg["dolphin_path"] + "/RetroRewind6/")
@@ -47,10 +53,10 @@ class RetroRewind():
             return False
 
     def install(self):
-        print("installing")
+        print("installing RR")
         URL = self.api_endpoint + "/zip/RetroRewind.zip"
         extract_to = ZIP_FOLDER
-        print("downloading")
+        print("downloading RR")
         res = requests.get(URL)
 
         res.raise_for_status()
@@ -67,6 +73,7 @@ class RetroRewind():
             os.remove(self.cfg['dolphin_path'] + "/riivolution/RetroRewind6.xml")
         os.makedirs(self.cfg['dolphin_path'] + "/riivolution/", exist_ok=True)
         shutil.move(extract_to + "/riivolution/RetroRewind6.xml", self.cfg['dolphin_path'] + "/riivolution/RetroRewind6.xml")
+        print(f"Installed")
 
     def update(self):
         extract_to=ZIP_FOLDER
@@ -83,7 +90,7 @@ class RetroRewind():
             zip_fp.extractall(extract_to)
         for item in os.listdir(extract_to):
             src_path = os.path.join(extract_to, item)
-            dst_path = os.path.join(DOLPHIN_ROOT, item)
+            dst_path = os.path.join(self.cfg['dolphin_path'], item)
 
             # If target exists, remove it first
             if os.path.exists(dst_path):
@@ -93,8 +100,9 @@ class RetroRewind():
                     os.remove(dst_path)
             print(src_path)
             print(dst_path)
-            shutil.move(src_path, dst_path)
-        # Move the item
+            if ".wad" not in src_path or "apps" not in src_path:
+                shutil.move(src_path, dst_path)
+            # Move the item
 
         with open(self.cfg['dolphin_path'] + '/RetroRewind6/version.txt', 'w') as fp:
             return fp.write(self.latest['version'])

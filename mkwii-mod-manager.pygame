@@ -6,12 +6,15 @@ import pygame
 from config import *
 from filepicker import *
 from retrorewind import *
+from insanekartwii import *
 
 CONFIG_FILE_PATH = "./config.json"
 ZIP_FOLDER       = "/tmp/update/"
 WINDOW_SURFACE   = pygame.HWSURFACE|pygame.DOUBLEBUF
+MENU_MIN_NUM     = 0
+MENU_MAX_NUM     = 2
 
-def pressButton(cfg, rr):
+def pressButton(cfg, rr, ikw):
     cfg['loading'] = True
     if cfg['menu_select'] == 1:
         if rr.needUpdate():
@@ -21,10 +24,13 @@ def pressButton(cfg, rr):
         cfg['action_thread'].start()
     elif cfg['menu_select'] == 0:
         cfg['loading'] = True
+    elif cfg['menu_select'] == 2:
+        cfg['action_thread'] = threading.Thread(target=ikw.install)
+        cfg['action_thread'].start()
     else:
         cfg['loading'] = False
 
-def eventHandler(joystick, cfg, rr):
+def eventHandler(joystick, cfg, rr, ikw):
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             pygame.quit()
@@ -34,10 +40,10 @@ def eventHandler(joystick, cfg, rr):
     # Controller input
     hat = joystick.get_hat(0)
     if hat[1] == 1:  # Up
-        if cfg['menu_select'] > 0:
+        if cfg['menu_select'] > MENU_MIN_NUM:
             cfg['menu_select'] -= 1
     elif hat[1] == -1:  # Down
-        if cfg['menu_select'] < 1:
+        if cfg['menu_select'] < MENU_MAX_NUM:
             cfg['menu_select'] += 1
     pygame.event.pump()
     if joystick.get_button(7) and joystick.get_button(6):
@@ -47,13 +53,14 @@ def eventHandler(joystick, cfg, rr):
         sys.exit()
     elif joystick.get_button(0):  # A
         print("press A")
-        pressButton(cfg, rr)
+        pressButton(cfg, rr, ikw)
     #time.sleep(0.5)
 
-def draw(screen, infoObject, rr, cfg):
+def draw(screen, infoObject, rr, ikw, cfg):
+    # This function is a fuckup
     fontTitle = pygame.font.SysFont(None, 48)
     fontText = pygame.font.SysFont(None, 38)
-    background = pygame.image.load("resources/Untitled.png")
+    background = pygame.image.load("resources/menu-background.png")
     if not hasattr(draw, "frameindex"):
         draw.frameindex= 0  # Static-like: initialized once
     if not hasattr(draw, "frames"):
@@ -65,28 +72,38 @@ def draw(screen, infoObject, rr, cfg):
 
     screen.fill((255, 255, 255))
     screen.blit(background, (0, 0))
-    title = fontTitle.render("Mario Kart Wii Mods Updater", True, (0, 0, 0))
+    title = fontTitle.render("Mario Kart Wii Mods Updater", True, (255, 255, 255))
     screen.blit(title, (infoObject.current_w//2 - title.get_width()//2, 100))
-    text = fontTitle.render("Dolphin path:", True, (0, 0, 0))
+    text = fontTitle.render("Dolphin path:", True, (255, 255, 255))
     screen.blit(text, (100, 300))
     if cfg['menu_select'] == 0:
-        text = fontTitle.render(">", True, (0, 0, 0))
+        text = fontTitle.render(">", True, (255, 255, 255))
         screen.blit(text, (100, 350))
-    text = fontText.render(cfg['dolphin_path'] + " - Select to change", True, (0, 0, 0))
+    text = fontText.render(cfg['dolphin_path'] + " - Select to change", True, (255, 255, 255))
     screen.blit(text, (150, 350))
-    text = fontTitle.render("Retro Rewind", True, (0, 0, 0))
+    text = fontTitle.render("Retro Rewind", True, (255, 255, 255))
     screen.blit(text, (100, 400))
     if cfg['menu_select'] == 1:
-        text = fontTitle.render(">", True, (0, 0, 0))
+        text = fontTitle.render(">", True, (255, 255, 255))
         screen.blit(text, (100, 450))
     if rr.exists():
         if rr.needUpdate():
-            text = fontText.render("Update Installation", True, (0, 0, 0))
+            text = fontText.render("Update Installation", True, (255, 255, 255))
         else:
-            text = fontText.render("Retro Rewind is up to date! - Select to delete and re-install", True, (0, 0, 0))
+            text = fontText.render("Retro Rewind is up to date! - Select to delete and re-install", True, (255, 255, 255))
     else:
-        text = fontText.render("Install RetroRewind", True, (0, 0, 0))
+        text = fontText.render("Install RetroRewind", True, (255, 255, 255))
     screen.blit(text, (150, 450))
+    text = fontTitle.render("Insane Kart Wii", True, (255, 255, 255))
+    screen.blit(text, (100, 500))
+    if cfg['menu_select'] == 2:
+        text = fontTitle.render(">", True, (255, 255, 255))
+        screen.blit(text, (100, 550))
+    if ikw.exists():
+        text = fontText.render("Insane Kart Wii is installed - Select to delete and reinstall", True, (255, 255, 255))
+    else:
+        text = fontText.render("Install Insane Kart Wii", True, (255, 255, 255))
+    screen.blit(text, (150, 550))
     if cfg['loading'] == True:
         screen.blit(draw.frames[draw.frameindex], ((infoObject.current_w / 2) - (draw.frames[draw.frameindex].get_width() / 2), infoObject.current_h - draw.frames[draw.frameindex].get_height()))
         draw.frameindex = (draw.frameindex + 1) % len(draw.frames)
@@ -123,6 +140,7 @@ def main():
     pygame.joystick.init()
     config = load_config(CONFIG_FILE_PATH)
     rr_handler = RetroRewind(config)
+    ikw_handler = InsaneKartWii(config)
 
     if pygame.joystick.get_count() < 1:
         print("No controller connected.")
@@ -132,8 +150,8 @@ def main():
     fp = FilePicker(screen,joystick)
     loadingScreen(screen, infoObject)
     while True:
-        eventHandler(joystick, config, rr_handler)
-        draw(screen, infoObject, rr_handler, config)
+        eventHandler(joystick, config, rr_handler, ikw_handler)
+        draw(screen, infoObject, rr_handler, ikw_handler, config)
         if config['loading'] == True and config['menu_select'] == 0:
             fp.draw()
             text = fp.event()
@@ -144,6 +162,7 @@ def main():
                 save_config(CONFIG_FILE_PATH, config)
         pygame.display.flip()
         if config['loading'] == True and config['menu_select'] == 1 and not config['action_thread'].is_alive():
+            rr.update_version()
             config['loading'] = False
             config['action_thread'] = None
         clock.tick(30)
