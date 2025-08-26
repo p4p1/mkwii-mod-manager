@@ -4,6 +4,8 @@ install/*
 __pycache__/
 *.py[cod]
 *$py.class
+bin/*
+bin/
 
 # C extensions
 *.so
