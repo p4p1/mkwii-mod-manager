@@ -13,7 +13,7 @@ ZIP_FOLDER       = "/tmp/update/"
 class RetroRewind():
     def __init__(self, config):
         self.cfg = config
-        self.api_endpoint = "http://update.zplwii.xyz:8000/RetroRewind"
+        self.api_endpoint = "http://update.rwfc.net:8000/RetroRewind"
         self.latest = self.getLatestInfo()
         self.current_version = self.getCurrentVerison()
         print(f"Latest Version: {self.latest['version']}")
@@ -53,19 +53,14 @@ class RetroRewind():
             return False
 
     def install(self):
-        print("installing RR")
         URL = self.api_endpoint + "/zip/RetroRewind.zip"
         extract_to = ZIP_FOLDER
-        print("downloading RR")
         res = requests.get(URL)
 
         res.raise_for_status()
-        print("downloaded")
         with zipfile.ZipFile(io.BytesIO(res.content)) as zip_fp:
             os.makedirs(extract_to, exist_ok=True)
             zip_fp.extractall(extract_to)
-        print(f"zip extracted at {extract_to}")
-        print(f"moving all to {self.cfg['dolphin_path']}")
         if os.path.exists(self.cfg['dolphin_path'] + "/RetroRewind6/"):
             shutil.rmtree(self.cfg['dolphin_path'] + "/RetroRewind6/")
         shutil.move(extract_to + "/RetroRewind6/", self.cfg['dolphin_path'] + "/RetroRewind6/")
@@ -73,7 +68,6 @@ class RetroRewind():
             os.remove(self.cfg['dolphin_path'] + "/riivolution/RetroRewind6.xml")
         os.makedirs(self.cfg['dolphin_path'] + "/riivolution/", exist_ok=True)
         shutil.move(extract_to + "/riivolution/RetroRewind6.xml", self.cfg['dolphin_path'] + "/riivolution/RetroRewind6.xml")
-        print(f"Installed")
 
     def update(self):
         extract_to=ZIP_FOLDER
@@ -88,21 +82,30 @@ class RetroRewind():
         with zipfile.ZipFile(io.BytesIO(res.content)) as zip_fp:
             os.makedirs(extract_to, exist_ok=True)
             zip_fp.extractall(extract_to)
-        for item in os.listdir(extract_to):
-            src_path = os.path.join(extract_to, item)
-            dst_path = os.path.join(self.cfg['dolphin_path'], item)
-
-            # If target exists, remove it first
-            if os.path.exists(dst_path):
-                if os.path.isdir(dst_path):
-                    shutil.rmtree(dst_path)
-                else:
-                    os.remove(dst_path)
-            print(src_path)
-            print(dst_path)
-            if ".wad" not in src_path or "apps" not in src_path:
-                shutil.move(src_path, dst_path)
-            # Move the item
-
+        for root, dirs, files in os.walk(extract_to + "/RetroRewind6/"):
+            rel_path = os.path.relpath(root, extract_to)
+            dest_dir = os.path.join(self.cfg['dolphin_path'], rel_path)
+            if not os.path.exists(dest_dir):
+                os.makedirs(dest_dir)
+            for file in files:
+                shutil.copy2(os.path.join(root, file), os.path.join(dest_dir, file))
+        if os.path.exists(extract_to + "/riivolution/RetroRewind6.xml"):
+            shutil.move(extract_to + "/riivolution/RetroRewind6.xml", self.cfg['dolphin_path'] + "/riivolution/RetroRewind6.xml")
         with open(self.cfg['dolphin_path'] + '/RetroRewind6/version.txt', 'w') as fp:
             return fp.write(self.latest['version'])
+
+if __name__ == "__main__":
+    from config import *
+
+    CONFIG_FILE_PATH = "./config.json"
+    config = load_config(CONFIG_FILE_PATH)
+    rr_handler = RetroRewind(config)
+    print("do you need to update?")
+    if rr_handler.needUpdate():
+        print("Yes Updating.....")
+        rr_handler.update()
+    else:
+        print("No Installing / Reinstalling.....")
+        rr_handler.install()
+
+    print("here")
